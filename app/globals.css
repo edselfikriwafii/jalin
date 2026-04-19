@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Variabel warna dari THEME.md — digunakan untuk custom shadow retro flat */
+:root {
+  --color-border: #C9BC9E;
+  --color-primary: #E04B3A;
+  --color-primary-hover: #C73D2E;
+}
+
+/* Reset background ke warna krem hangat dari THEME.md */
+body {
+  background-color: #F5F0E4;
+  color: #1A1A1A;
+}
+
+/* Pastikan semua elemen menggunakan font sans secara default */
+* {
+  font-family: var(--font-sans), system-ui, sans-serif;
+}

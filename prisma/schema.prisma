@@ -1,0 +1,162 @@
+// Schema Prisma untuk aplikasi Jalin (Jago Lingo)
+// Dokumentasi: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// MODEL AUTENTIKASI
+// ============================================================
+
+// Data akun pengguna — inti dari seluruh sistem
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime? // null = belum terverifikasi, tidak bisa login
+  passwordHash  String?   // null jika mendaftar via OAuth di masa depan
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts    Account[]
+  submissions Submission[]
+}
+
+// Untuk OAuth provider (Google, GitHub, dll.) — disiapkan untuk masa depan
+model Account {
+  id                String   @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?  @db.Text
+  access_token      String?  @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?  @db.Text
+  session_state     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+// Token untuk verifikasi email setelah mendaftar
+model VerificationToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique @default(cuid())
+  expiresAt DateTime // token kadaluarsa setelah 24 jam
+  createdAt DateTime @default(now())
+}
+
+// ============================================================
+// MODEL SOAL LATIHAN
+// ============================================================
+
+// Soal latihan IELTS Academic Writing
+model Question {
+  id         String       @id @default(cuid())
+  type       QuestionType // PART1 (grafik/diagram) atau PART2 (esai)
+  topic      String       // topik soal, mis. "Bar Chart - Energy Consumption"
+  difficulty Difficulty
+  body       String       @db.Text // teks soal lengkap
+  chartData  Json?        // Data grafik dalam format JSON — hanya untuk Part 1, dirender oleh Recharts
+  createdAt  DateTime     @default(now())
+
+  submissions Submission[]
+}
+
+// ============================================================
+// MODEL LATIHAN USER
+// ============================================================
+
+// Jawaban yang dikirimkan user untuk satu soal
+model Submission {
+  id              String       @id @default(cuid())
+  userId          String
+  questionId      String
+  content         String       @db.Text // teks jawaban user
+  mode            PracticeMode
+  durationSeconds Int?         // berapa detik user mengerjakan soal
+  createdAt       DateTime     @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id])
+  review   Review?  // null = AI belum selesai menilai
+}
+
+// Hasil penilaian AI atas satu submission
+model Review {
+  id           String   @id @default(cuid())
+  submissionId String   @unique // satu submission hanya punya satu review
+  overallScore Float    // Band score keseluruhan: 0.0 – 9.0
+  summary      String   @db.Text // ringkasan kekuatan dan kelemahan jawaban
+  createdAt    DateTime @default(now())
+
+  submission       Submission        @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  criterionScores  CriterionScore[]
+  sentenceFeedback SentenceFeedback[]
+}
+
+// Nilai per kriteria penilaian IELTS Writing
+model CriterionScore {
+  id        String    @id @default(cuid())
+  reviewId  String
+  criterion Criterion
+  score     Float     // Band score kriteria ini: 0.0 – 9.0
+  feedback  String    @db.Text // penjelasan spesifik kelebihan & kekurangan
+
+  review Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+}
+
+// Saran perbaikan per kalimat yang diberikan AI
+model SentenceFeedback {
+  id         String @id @default(cuid())
+  reviewId   String
+  original   String @db.Text // kalimat asli dari jawaban user
+  suggestion String @db.Text // kalimat yang disarankan AI
+  reason     String @db.Text // alasan mengapa perlu diperbaiki
+  orderIndex Int    // urutan kemunculan kalimat dalam teks jawaban
+
+  review Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+}
+
+// ============================================================
+// ENUM — Nilai Tetap yang Diizinkan
+// ============================================================
+
+enum QuestionType {
+  PART1 // Academic Writing Task 1: deskripsi grafik, diagram, tabel, atau proses
+  PART2 // Academic Writing Task 2: esai argumentatif, diskusi, problem-solution
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum PracticeMode {
+  PRACTICE // Tanpa batas waktu — untuk latihan dan belajar
+  EXAM     // Ada timer (60 menit Part 1, 40 menit Part 2) — simulasi ujian
+}
+
+enum Criterion {
+  TASK_ACHIEVEMENT              // Part 1: akurasi deskripsi data & penyebutan fitur kunci
+  TASK_RESPONSE                 // Part 2: kelengkapan respons & relevansi argumen
+  COHERENCE_AND_COHESION        // Alur logis, organisasi paragraf, penggunaan kata penghubung
+  LEXICAL_RESOURCE              // Kekayaan kosakata, ketepatan penggunaan, ejaan
+  GRAMMATICAL_RANGE_AND_ACCURACY // Variasi struktur kalimat, akurasi tata bahasa
+}
